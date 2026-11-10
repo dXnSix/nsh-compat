@@ -6,6 +6,7 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(nsh_has_glass_tint)");
     println!("cargo:rustc-check-cfg=cfg(nsh_has_window_controls)");
     println!("cargo:rustc-check-cfg=cfg(nsh_has_web_element)");
+    println!("cargo:rustc-check-cfg=cfg(nsh_has_tizen)");
 
     // The checker must still compile against NSH checkouts predating these
     // fields, so detect the public API before referring to their Rust fields.
@@ -23,6 +24,13 @@ fn main() {
         .any(|spec| spec.name == "element" && format!("{:?}", spec.platform) == "Web")
     {
         println!("cargo:rustc-cfg=nsh_has_web_element");
+    }
+    // `Os::Tizen` has no name to look it up by, so read the checkout's
+    // `platform.rs`, the file `nsh-core` above is built from.
+    let platform = concat!(env!("CARGO_MANIFEST_DIR"), "/../nsh/crates/nsh-core/src/platform.rs");
+    println!("cargo:rerun-if-changed={platform}");
+    if std::fs::read_to_string(platform).is_ok_and(|source| source.contains("    Tizen,")) {
+        println!("cargo:rustc-cfg=nsh_has_tizen");
     }
     if Style::default()
         .set("glassTintColor", StyleValue::Str("#ff0000"))

@@ -1707,6 +1707,7 @@ pub(crate) fn run(code: String, script: &str, dir: &Path) -> Result<(), Failure>
                 Some("windows") => Os::Windows,
                 Some("linux") => Os::Linux,
                 Some("web") => Os::Web,
+                #[cfg(nsh_has_tizen)]
                 Some("tizen") => Os::Tizen,
                 _ => {
                     return Err(format!(
@@ -1717,7 +1718,12 @@ pub(crate) fn run(code: String, script: &str, dir: &Path) -> Result<(), Failure>
             };
             match words.next() {
                 // The OS's own: a desktop's, Tizen's TV, else a phone.
+                #[cfg(nsh_has_tizen)]
                 None => environment.idiom = Idiom::default_on(environment.os),
+                #[cfg(not(nsh_has_tizen))]
+                None if environment.os.is_desktop() => environment.idiom = Idiom::Desktop,
+                #[cfg(not(nsh_has_tizen))]
+                None => {}
                 Some("desktop") => environment.idiom = Idiom::Desktop,
                 Some("terminal") => environment.idiom = Idiom::Terminal,
                 Some("tv") => environment.idiom = Idiom::Tv,
