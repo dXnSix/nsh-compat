@@ -10,11 +10,13 @@
 //!
 //! - `viewport <width> <height>`: before anything else, the screen's size
 //!   (390 × 844 by default);
-//! - `platform <os> [desktop]`: before anything else (with `viewport`), the
-//!   platform the app runs on: `ios` (the default), `android`, `macos`,
-//!   `windows`, `linux` or `web`; `desktop` makes a browser a desktop one.
-//!   It decides which of `ios={{…}}`, `android={{…}}`, `desktop={{…}}`
-//!   (the desktop OSes and desktop browsers) and `web={{…}}` apply;
+//! - `platform <os> [desktop|terminal|tv]`: before anything else (with
+//!   `viewport`), the platform the app runs on: `ios` (the default),
+//!   `android`, `macos`, `windows`, `linux` or `web`; `desktop` makes a
+//!   browser a desktop one, `terminal` the platform a terminal, `tv` the
+//!   device a TV (on any OS: `platform.tv`, never desktop). It decides which
+//!   of `ios={{…}}`, `android={{…}}`, `desktop={{…}}` (the desktop OSes and
+//!   desktop browsers), `web={{…}}` and `tv={{…}}` (TVs) apply;
 //! - `expect <text>`: a text on screen reads `<text>` (waits for it);
 //! - `absent <text>`: no text on screen reads `<text>` (after the app is
 //!   quiet; waits for a text still shown to go, as `expect` waits);
@@ -42,8 +44,8 @@
 //!   frame, in points relative to its parent (waits for it);
 //! - `prop <selector> <name> <value>`: the first view on screen the
 //!   selector names has host prop `<name>` (its JS name; a platform's props
-//!   with or without their `ios.` / `android.` / `macos.` / `desktop.` / `web.`
-//!   prefix) at `<value>` as the platform receives it, written as
+//!   with or without their `ios.` / `android.` / `macos.` / `desktop.` /
+//!   `web.` / `tv.` prefix) at `<value>` as the platform receives it, written as
 //!   compat/values.rs says (waits for it);
 //! - `noprop <selector> <name>`: the view has no such prop, or the value a
 //!   view of its kind has with none set (after the app is quiet);
@@ -1714,7 +1716,7 @@ pub(crate) fn run(code: String, script: &str, dir: &Path) -> Result<(), Failure>
                 Some("web") => Os::Web,
                 _ => {
                     return Err(format!(
-                        "`{line}`: platform ios|android|macos|windows|linux|web [desktop|terminal]"
+                        "`{line}`: platform ios|android|macos|windows|linux|web [desktop|terminal|tv]"
                     )
                     .into());
                 }
@@ -1724,8 +1726,11 @@ pub(crate) fn run(code: String, script: &str, dir: &Path) -> Result<(), Failure>
                 None => {}
                 Some("desktop") => environment.idiom = Idiom::Desktop,
                 Some("terminal") => environment.idiom = Idiom::Terminal,
+                Some("tv") => environment.idiom = Idiom::Tv,
                 Some(other) => {
-                    return Err(format!("`{line}`: `{other}`, not `desktop` or `terminal`").into());
+                    return Err(
+                        format!("`{line}`: `{other}`, not `desktop`, `terminal` or `tv`").into(),
+                    );
                 }
             }
         } else if let Some(scale) = line.strip_prefix("fontscale ") {

@@ -45,7 +45,7 @@ use nsh_core::{
 
 /// The platforms whose props are written `<platform>.<name>` in scripts as
 /// in a script's `covers` step; the platform receives them as `<name>`.
-const PLATFORMS: &[&str] = &["ios.", "android.", "macos.", "desktop.", "web."];
+const PLATFORMS: &[&str] = &["ios.", "android.", "macos.", "desktop.", "web.", "tv."];
 
 /// The last mount item of each kind a view got: what the platform shows.
 #[derive(Default, Clone)]
