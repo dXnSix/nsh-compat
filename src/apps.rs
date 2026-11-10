@@ -12,9 +12,10 @@
 //!   (390 × 844 by default);
 //! - `platform <os> [desktop|terminal|tv]`: before anything else (with
 //!   `viewport`), the platform the app runs on: `ios` (the default),
-//!   `android`, `macos`, `windows`, `linux` or `web`; `desktop` makes a
-//!   browser a desktop one, `terminal` the platform a terminal, `tv` the
-//!   device a TV (on any OS: `platform.tv`, never desktop). It decides which
+//!   `android`, `macos`, `windows`, `linux`, `web` or `tizen` (a TV unless
+//!   the script says otherwise); `desktop` makes a browser a desktop one,
+//!   `terminal` the platform a terminal, `tv` the device a TV (on any OS:
+//!   `platform.tv`, never desktop). It decides which
 //!   of `ios={{…}}`, `android={{…}}`, `desktop={{…}}` (the desktop OSes and
 //!   desktop browsers), `web={{…}}` and `tv={{…}}` (TVs) apply;
 //! - `expect <text>`: a text on screen reads `<text>` (waits for it);
@@ -1706,16 +1707,17 @@ pub(crate) fn run(code: String, script: &str, dir: &Path) -> Result<(), Failure>
                 Some("windows") => Os::Windows,
                 Some("linux") => Os::Linux,
                 Some("web") => Os::Web,
+                Some("tizen") => Os::Tizen,
                 _ => {
                     return Err(format!(
-                        "`{line}`: platform ios|android|macos|windows|linux|web [desktop|terminal|tv]"
+                        "`{line}`: platform ios|android|macos|windows|linux|web|tizen [desktop|terminal|tv]"
                     )
                     .into());
                 }
             };
             match words.next() {
-                None if environment.os.is_desktop() => environment.idiom = Idiom::Desktop,
-                None => {}
+                // The OS's own: a desktop's, Tizen's TV, else a phone.
+                None => environment.idiom = Idiom::default_on(environment.os),
                 Some("desktop") => environment.idiom = Idiom::Desktop,
                 Some("terminal") => environment.idiom = Idiom::Terminal,
                 Some("tv") => environment.idiom = Idiom::Tv,
