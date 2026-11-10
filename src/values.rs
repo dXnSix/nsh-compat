@@ -20,6 +20,9 @@
 //!   order of their TS declaration; required members always, optional ones
 //!   when set (not at their default); `{}` when none is;
 //! - lists: their items separated by `, `;
+//! - views (a prop's ref to another view, `nextFocusDown`): the selector
+//!   a script finds the view by, `id:<testID>`, or `ref` for a view
+//!   without a `testID`;
 //! - CSS-like values (`transform`, `boxShadow`, `filter`,
 //!   `backgroundImage`, `transformOrigin`, `objectPosition`, timing
 //!   functions): CSS's
@@ -78,14 +81,18 @@ impl Mounted {
     /// Takes in `item`, one addressed to this view.
     pub(crate) fn apply(&mut self, item: &MountItem) {
         match item {
-            MountItem::Create { kind, .. } => {
+            MountItem::Create { id, kind } => {
                 *self = Mounted {
                     kind: Some(*kind),
                     ..Mounted::default()
-                }
+                };
+                named(*id, None);
             }
             MountItem::ViewStyle { style, .. } => self.style = Some(style.clone()),
-            MountItem::ViewProps { props, .. } => self.props = Some(props.clone()),
+            MountItem::ViewProps { id, props } => {
+                self.props = Some(props.clone());
+                named(*id, props.test_id.clone());
+            }
             MountItem::AccessibilityLabel { label, .. } => {
                 self.props.get_or_insert_default().accessibility.label = label.clone();
             }
@@ -257,6 +264,8 @@ impl Mounted {
         if let Some(v) = p.focusable {
             out.put("focusable", v.to_string());
         }
+        #[cfg(nsh_has_focus_routes)]
+        focus(&p, &mut out);
         if p.selectable_view {
             out.put("selectableView", "true".into());
         }
@@ -823,6 +832,65 @@ fn text_style(t: &ResolvedTextStyle, out: &mut Out) {
             .map(|(_, name)| name.to_owned()),
         ),
     );
+}
+
+/// The focus props of a view (the TV's remote): `autoFocus` of a view
+/// that is not an input (an input's is its configuration's, which the
+/// keys of inputs write over it), `preferredFocus`, the routes
+/// `nextFocusUp` / `Down` / `Left` / `Right` as the views they name, and
+/// `focusGroup`, what `nsh/base`'s `FocusGroup` gives its view:
+/// `trap=<boolean> destinations=<views>`, the destinations when it has
+/// any.
+#[cfg(nsh_has_focus_routes)]
+fn focus(p: &ViewProps, out: &mut Out) {
+    out.put("autoFocus", p.auto_focus.to_string());
+    out.put("preferredFocus", p.preferred_focus.to_string());
+    let routes = [
+        ("nextFocusUp", p.next_focus.up),
+        ("nextFocusDown", p.next_focus.down),
+        ("nextFocusLeft", p.next_focus.left),
+        ("nextFocusRight", p.next_focus.right),
+    ];
+    for (key, to) in routes {
+        if let Some(to) = to {
+            out.put(key, view(to));
+        }
+    }
+    if let Some(group) = &p.focus_group {
+        let mut o = Object::default();
+        o.opt("trap", Some(group.trap.to_string()));
+        o.opt(
+            "destinations",
+            (!group.destinations.is_empty())
+                .then(|| list(group.destinations.iter().map(|&to| view(to)))),
+        );
+        out.put("focusGroup", o.done());
+    }
+}
+
+thread_local! {
+    /// The `testID`s of the views of the run on this thread, by node:
+    /// what [`view`] names a view a prop refers to by.
+    static NAMES: std::cell::RefCell<std::collections::HashMap<nsh_core::NodeId, Arc<str>>> =
+        Default::default();
+}
+
+/// View `id` was created (`None`) or given its props, with `test_id`.
+fn named(id: nsh_core::NodeId, test_id: Option<Arc<str>>) {
+    NAMES.with(|n| match test_id {
+        Some(name) => n.borrow_mut().insert(id, name),
+        None => n.borrow_mut().remove(&id),
+    });
+}
+
+/// View `id` as a prop naming it is written: the selector of its `testID`,
+/// or `ref` without one.
+#[cfg_attr(not(nsh_has_focus_routes), allow(dead_code))]
+fn view(id: nsh_core::NodeId) -> String {
+    NAMES.with(|n| match n.borrow().get(&id) {
+        Some(name) => format!("id:{name}"),
+        None => "ref".into(),
+    })
 }
 
 /// Values by key.
@@ -1592,4 +1660,72 @@ fn glass_tint_values_preserve_alpha_and_clear() {
     assert_eq!(view.styles(None)["glassTintColor"], "#00ff0040");
     view.style.as_mut().unwrap().glass_tint_color = None;
     assert!(!view.styles(None).contains_key("glassTintColor"));
+}
+
+#[cfg(nsh_has_focus_routes)]
+#[test]
+fn focus_props_name_the_views_they_route_to() {
+    let props = |id, test_id: Option<&str>, set: &dyn Fn(&mut ViewProps)| {
+        let mut props = ViewProps {
+            test_id: test_id.map(Into::into),
+            ..ViewProps::default()
+        };
+        set(&mut props);
+        MountItem::ViewProps {
+            id,
+            props: Box::new(props),
+        }
+    };
+    let mut target = Mounted::default();
+    target.apply(&MountItem::Create {
+        id: 2,
+        kind: ViewKind::View,
+    });
+    target.apply(&props(2, Some("play"), &|_| {}));
+    let mut view = Mounted::default();
+    view.apply(&MountItem::Create {
+        id: 1,
+        kind: ViewKind::View,
+    });
+    assert_eq!(view.props()["autoFocus"], "false");
+    assert_eq!(view.props()["preferredFocus"], "false");
+    assert!(!view.props().contains_key("nextFocusDown"));
+    assert!(!view.props().contains_key("focusGroup"));
+    view.apply(&props(1, Some("resume"), &|p| {
+        p.auto_focus = true;
+        p.preferred_focus = true;
+        p.next_focus.down = Some(2);
+        p.next_focus.left = Some(9);
+        let mut group = nsh_core::focus::GroupConfig::default();
+        group.destinations = vec![2, 9];
+        p.focus_group = Some(group);
+    }));
+    let out = view.props();
+    assert_eq!(out["autoFocus"], "true");
+    assert_eq!(out["preferredFocus"], "true");
+    assert_eq!(out["nextFocusDown"], "id:play");
+    // A view without a `testID`.
+    assert_eq!(out["nextFocusLeft"], "ref");
+    assert!(!out.contains_key("nextFocusUp"));
+    assert_eq!(out["focusGroup"], "trap=false destinations=id:play, ref");
+    view.apply(&props(1, None, &|p| {
+        let mut group = nsh_core::focus::GroupConfig::default();
+        group.trap = true;
+        p.focus_group = Some(group);
+    }));
+    assert_eq!(view.props()["focusGroup"], "trap=true");
+    // An input's `autoFocus` is its configuration's.
+    let mut input = Mounted::default();
+    input.apply(&MountItem::Create {
+        id: 3,
+        kind: ViewKind::Input,
+    });
+    input.apply(&MountItem::Input {
+        id: 3,
+        config: Box::new(InputConfig {
+            auto_focus: true,
+            ..InputConfig::default()
+        }),
+    });
+    assert_eq!(input.props()["autoFocus"], "true");
 }
