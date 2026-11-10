@@ -7,6 +7,7 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(nsh_has_window_controls)");
     println!("cargo:rustc-check-cfg=cfg(nsh_has_web_element)");
     println!("cargo:rustc-check-cfg=cfg(nsh_has_accessibility_description)");
+    println!("cargo:rustc-check-cfg=cfg(nsh_has_focus_routes)");
 
     // The checker must still compile against NSH checkouts predating these
     // fields, so detect the public API before referring to their Rust fields.
@@ -17,6 +18,11 @@ fn main() {
     }
     if specs.iter().any(|spec| spec.name == "windowControl") {
         println!("cargo:rustc-cfg=nsh_has_window_controls");
+    }
+    // `preferredFocus` came with views' `autoFocus`, the `nextFocus…`
+    // routes and focus groups.
+    if specs.iter().any(|spec| spec.name == "preferredFocus") {
+        println!("cargo:rustc-cfg=nsh_has_focus_routes");
     }
     // By the platform's name: older checkouts have no `Platform::Web`.
     if specs
