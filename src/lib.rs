@@ -34,6 +34,10 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     process::Command,
+    sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 /// This repository.
@@ -383,11 +387,56 @@ fn build_apps(
     Ok(built.into_iter().map(Result::unwrap).collect())
 }
 
-/// Runs the apps in `dirs` (each a build with its script); the failures.
+/// Runs the apps in `dirs` (each a build with its script), side by side;
+/// the failures, in the order of `dirs`.
+///
+/// A run mostly waits (for the app to be quiet, for a frame, for a text), so
+/// as many run at once as the machine has cores; [`apps`] lets only that
+/// many start at a time, which is what costs. The longest scripts start
+/// first: the longest run is the least the whole takes.
 fn run_apps(dirs: &[(String, PathBuf)]) -> Vec<String> {
+    let mut order: Vec<usize> = (0..dirs.len()).collect();
+    order.sort_by_key(|&i| {
+        std::cmp::Reverse(std::fs::metadata(dirs[i].1.join("script.txt")).map_or(0, |m| m.len()))
+    });
+    let workers = std::thread::available_parallelism()
+        .map_or(4, |n| n.get())
+        .min(dirs.len());
+    let next = AtomicUsize::new(0);
+    let results: Mutex<Vec<Option<Result<(), String>>>> = Mutex::new(vec![None; dirs.len()]);
+    std::thread::scope(|s| {
+        for _ in 0..workers {
+            s.spawn(|| {
+                while let Some(&i) = order.get(next.fetch_add(1, Ordering::Relaxed)) {
+                    let result = run_app(&dirs[i].1);
+                    results.lock().unwrap()[i] = Some(result);
+                }
+            });
+        }
+    });
     dirs.iter()
-        .filter_map(|(name, dir)| apps::run_app(dir).err().map(|e| format!("{name}: {e}")))
+        .zip(results.into_inner().unwrap())
+        .filter_map(|((name, _), result)| match result {
+            Some(Ok(())) => None,
+            Some(Err(e)) => Some(format!("{name}: {e}")),
+            None => Some(format!("{name}: did not run")),
+        })
         .collect()
+}
+
+/// Runs the app in `dir`; a panic (the engine stopped) is its failure, so
+/// the others still run and the failure names its app.
+fn run_app(dir: &Path) -> Result<(), String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| apps::run_app(dir))).unwrap_or_else(
+        |panic| {
+            let message = panic
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| panic.downcast_ref::<&str>().copied())
+                .unwrap_or("a panic");
+            Err(format!("panicked: {message}"))
+        },
+    )
 }
 
 /// Records the checkout as release `version` in `releases/v<version>/`:
@@ -436,6 +485,8 @@ pub fn checkout_apps_run() -> Result<(), String> {
         std::fs::remove_dir_all(&root).map_err(|e| format!("{}: {e}", root.display()))?;
     }
     let built = build_checkout_apps(&root)?;
+    // The claims' checks already run their apps side by side: overlapping
+    // them with these runs starved the runs' waits on a 4-core runner.
     let failed = run_apps(&built);
     if !failed.is_empty() {
         return Err(failed.join("\n\n"));
