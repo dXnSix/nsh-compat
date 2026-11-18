@@ -9,6 +9,7 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(nsh_has_focus_routes)");
     println!("cargo:rustc-check-cfg=cfg(nsh_has_tizen)");
     println!("cargo:rustc-check-cfg=cfg(nsh_has_accessibility_description)");
+    println!("cargo:rustc-check-cfg=cfg(nsh_has_scrollbar_inset)");
 
     // The checker must still compile against NSH checkouts predating these
     // fields, so detect the public API before referring to their Rust fields.
@@ -44,6 +45,9 @@ fn main() {
         .any(|spec| spec.name == "accessibilityDescription")
     {
         println!("cargo:rustc-cfg=nsh_has_accessibility_description");
+    }
+    if specs.iter().any(|spec| spec.name == "scrollbarInset") {
+        println!("cargo:rustc-cfg=nsh_has_scrollbar_inset");
     }
     if Style::default()
         .set("glassTintColor", StyleValue::Str("#ff0000"))
