@@ -296,6 +296,13 @@ impl Mounted {
             );
             out.put("backdrop", value.done());
         }
+        #[cfg(nsh_has_windows_backdrop)]
+        if let Some(backdrop) = style.windows_backdrop {
+            out.put(
+                "windows.backdrop",
+                format!("material={}", backdrop.material.js_name()),
+            );
+        }
 
         match self.kind {
             Some(ViewKind::Image) => {
@@ -377,6 +384,8 @@ impl Mounted {
                     out.put("submitBehavior", v.js_name().into());
                 }
                 out.put("autoFocus", c.auto_focus.to_string());
+                #[cfg(nsh_has_select_text_on_focus)]
+                out.put("selectTextOnFocus", c.select_text_on_focus.to_string());
                 out.put("autoComplete", auto_fill(c.auto_fill).into());
                 out.put("caret", (!c.caret_hidden).to_string());
                 if let Some(v) = &c.accessory_id {
@@ -403,6 +412,8 @@ impl Mounted {
                     "headerBackgroundOnScroll",
                     c.header_background_on_scroll.to_string(),
                 );
+                #[cfg(nsh_has_header_title_align)]
+                out.put("headerTitleAlign", c.title_align.js_name().into());
                 let mut o = Object::default();
                 o.opt("backgroundColor", c.background_color.map(color));
                 o.opt("color", c.title_color.map(color));
@@ -579,6 +590,10 @@ impl Mounted {
         if let Some(c) = s.tint_color {
             out.put("tintColor", color(c));
         }
+        #[cfg(nsh_has_accent_color)]
+        if let Some(c) = s.accent_color {
+            out.put("accentColor", color(c));
+        }
         // An image's position travels with its source (`MountItem::Image`).
         if self.kind == Some(ViewKind::Image) {
             let (_, _, options) = self.image.clone().unwrap_or_default();
@@ -631,10 +646,6 @@ impl Mounted {
         #[cfg(nsh_has_glass_tint)]
         if let Some(tint) = s.glass_tint_color {
             out.put("glassTintColor", color(tint));
-        }
-        #[cfg(nsh_has_accent_color)]
-        if let Some(accent) = s.accent_color {
-            out.put("accentColor", color(accent));
         }
         out.put(
             "maskImage",
@@ -765,7 +776,7 @@ impl Mounted {
 
 /// The key a script's `name` reads: a platform's props are named with
 /// their platform (`ios.keyboardAppearance`) or without, and a few keys
-/// have a second JS name.
+/// have a second JS name. Windows backdrop keeps its platform qualifier.
 pub(crate) fn key(name: &str) -> &str {
     let name = PLATFORMS
         .iter()
@@ -1660,6 +1671,23 @@ fn material_values_distinguish_defaults_from_removal() {
     assert_eq!(view.props()["backdrop"], "{}");
     view.style.as_mut().unwrap().macos_backdrop = None;
     assert!(!view.props().contains_key("backdrop"));
+}
+
+#[cfg(nsh_has_windows_backdrop)]
+#[test]
+fn windows_backdrop_values_set_and_clear() {
+    let mut view = Mounted {
+        style: Some(Box::new(ViewStyle {
+            windows_backdrop: Some(nsh_core::WindowsBackdrop::default()),
+            ..ViewStyle::default()
+        })),
+        ..Mounted::default()
+    };
+    assert_eq!(key("windows.backdrop"), "windows.backdrop");
+    assert_eq!(view.props()[key("windows.backdrop")], "material=blur");
+    assert!(!view.props().contains_key(key("macos.backdrop")));
+    view.style.as_mut().unwrap().windows_backdrop = None;
+    assert!(!view.props().contains_key(key("windows.backdrop")));
 }
 
 #[cfg(nsh_has_glass_tint)]
