@@ -252,6 +252,10 @@ impl Mounted {
             o.opt("activeOffsetY", pan.active_offset_y.map(num));
             o.opt("failOffsetX", pan.fail_offset_x.map(num));
             o.opt("failOffsetY", pan.fail_offset_y.map(num));
+            #[cfg(nsh_has_pan_edge)]
+            o.opt("direction", pan.direction.map(|v| v.js_name().into()));
+            #[cfg(nsh_has_pan_edge)]
+            o.opt("edge", pan.edge.map(|v| v.js_name().into()));
             out.put("panActivation", o.done());
         }
         if let Some(v) = p.window_drag {
@@ -336,6 +340,11 @@ impl Mounted {
                 out.put("snapToAlignment", b.snap_alignment.js_name().into());
                 out.put("decelerationRate", num(b.deceleration));
                 out.put("scrollable", b.enabled.to_string());
+                #[cfg(nsh_has_smooth_wheel)]
+                {
+                    out.put("smoothWheel", b.smooth_wheel.to_string());
+                    out.put("wheelLineHeight", num(b.wheel_line_height));
+                }
                 out.put("bounces", b.bounces.to_string());
                 out.put("contentInset", insets(&b.content_inset));
                 #[cfg(nsh_has_scrollbar_inset)]
@@ -380,6 +389,10 @@ impl Mounted {
                 }
                 out.put("readonly", (!c.editable).to_string());
                 out.put("pasteBehavior", c.paste_behavior.js_name().into());
+                #[cfg(nsh_has_paste_max_size)]
+                if let Some(v) = c.paste_max_size {
+                    out.put("pasteMaxSize", v.to_string());
+                }
                 if let Some(v) = c.submit_behavior {
                     out.put("submitBehavior", v.js_name().into());
                 }
@@ -651,6 +664,11 @@ impl Mounted {
             "maskImage",
             or_none(list(effects.mask_images.iter().map(gradient))),
         );
+        #[cfg(nsh_has_clip_path)]
+        out.put(
+            "clipPath",
+            effects.clip_path.map_or("none".into(), clip_inset),
+        );
         out.put("mixBlendMode", s.blend_mode.name().into());
         out.put("outlineWidth", num(s.outline.width));
         out.put("outlineColor", color(s.outline.color));
@@ -678,6 +696,8 @@ impl Mounted {
                             (T::TRANSFORM, "transform"),
                             (T::SHADOW, "shadow"),
                             (T::SHAPE, "shape"),
+                            #[cfg(nsh_has_clip_path)]
+                            (T::CLIP_PATH, "clip-path"),
                         ]
                         .into_iter()
                         .filter(|(bit, _)| p.has(*bit))
@@ -1014,6 +1034,31 @@ fn list(items: impl Iterator<Item = String>) -> String {
 
 fn or_none(s: String) -> String {
     if s.is_empty() { "none".into() } else { s }
+}
+
+/// `clipPath`: `inset(<top> <right> <bottom> <left> round <top-left>
+/// <top-right> <bottom-right> <bottom-left>)`, every edge and corner
+/// written out; an edge of both a length and a percentage as
+/// `calc(<length> + <percentage>)`.
+#[cfg(nsh_has_clip_path)]
+fn clip_inset(c: nsh_core::ClipInset) -> String {
+    let edge = |points: Points, fraction: Percentage| match (points.0 != 0.0, fraction.0 != 0.0) {
+        (true, true) => format!("calc({} + {}%)", num(points), num(fraction.0 * 100.0)),
+        (false, true) => format!("{}%", num(fraction.0 * 100.0)),
+        _ => num(points),
+    };
+    let (o, f, r) = (c.offsets, c.fractions, c.radii);
+    format!(
+        "inset({} {} {} {} round {} {} {} {})",
+        edge(o.top, f.top),
+        edge(o.right, f.right),
+        edge(o.bottom, f.bottom),
+        edge(o.left, f.left),
+        num(r.top_left),
+        num(r.top_right),
+        num(r.bottom_right),
+        num(r.bottom_left),
+    )
 }
 
 /// `{ width, height }`: both members are required.

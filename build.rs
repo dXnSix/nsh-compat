@@ -12,10 +12,14 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(nsh_has_tizen)");
     println!("cargo:rustc-check-cfg=cfg(nsh_has_accessibility_description)");
     println!("cargo:rustc-check-cfg=cfg(nsh_has_scrollbar_inset)");
+    println!("cargo:rustc-check-cfg=cfg(nsh_has_smooth_wheel)");
     println!("cargo:rustc-check-cfg=cfg(nsh_has_header_shadow_visible)");
     println!("cargo:rustc-check-cfg=cfg(nsh_has_header_background_on_scroll)");
     println!("cargo:rustc-check-cfg=cfg(nsh_has_header_title_align)");
     println!("cargo:rustc-check-cfg=cfg(nsh_has_select_text_on_focus)");
+    println!("cargo:rustc-check-cfg=cfg(nsh_has_paste_max_size)");
+    println!("cargo:rustc-check-cfg=cfg(nsh_has_clip_path)");
+    println!("cargo:rustc-check-cfg=cfg(nsh_has_pan_edge)");
 
     // The checker must still compile against NSH checkouts predating these
     // fields, so detect the public API before referring to their Rust fields.
@@ -65,6 +69,9 @@ fn main() {
     if specs.iter().any(|spec| spec.name == "scrollbarInset") {
         println!("cargo:rustc-cfg=nsh_has_scrollbar_inset");
     }
+    if specs.iter().any(|spec| spec.name == "smoothWheel") {
+        println!("cargo:rustc-cfg=nsh_has_smooth_wheel");
+    }
     if specs.iter().any(|spec| spec.name == "headerShadowVisible") {
         println!("cargo:rustc-cfg=nsh_has_header_shadow_visible");
     }
@@ -80,6 +87,14 @@ fn main() {
     if specs.iter().any(|spec| spec.name == "selectTextOnFocus") {
         println!("cargo:rustc-cfg=nsh_has_select_text_on_focus");
     }
+    if specs.iter().any(|spec| spec.name == "pasteMaxSize") {
+        println!("cargo:rustc-cfg=nsh_has_paste_max_size");
+    }
+    // `panActivation`'s `direction` and `edge` came with the pan payload's
+    // `origin`.
+    if nsh_core::js::host::declarations().contains("edge?: PanEdge;") {
+        println!("cargo:rustc-cfg=nsh_has_pan_edge");
+    }
     if Style::default()
         .set("glassTintColor", StyleValue::Str("#ff0000"))
         .is_ok()
@@ -91,5 +106,11 @@ fn main() {
         .is_ok()
     {
         println!("cargo:rustc-cfg=nsh_has_accent_color");
+    }
+    if Style::default()
+        .set("clipPath", StyleValue::Str("inset(1px)"))
+        .is_ok()
+    {
+        println!("cargo:rustc-cfg=nsh_has_clip_path");
     }
 }
